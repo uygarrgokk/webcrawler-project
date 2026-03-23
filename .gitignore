@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+crawler.db
+crawler.db-shm
+crawler.db-wal
