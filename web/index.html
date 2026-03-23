@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Crawler UI</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin-bottom: 30px; }
+        input, button { padding: 8px; margin: 5px; }
+        #results { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Web Crawler</h1>
+
+    <div class="section">
+        <h2>Index</h2>
+        <input type="text" id="origin" placeholder="Origin URL" value="https://example.com">
+        <input type="number" id="depth" placeholder="Depth" value="2">
+        <button onclick="index()">Start Indexing</button>
+        <div id="indexResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>Search</h2>
+        <input type="text" id="query" placeholder="Query">
+        <input type="number" id="limit" placeholder="Limit" value="50">
+        <button onclick="search()">Search</button>
+        <div id="searchResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>Status</h2>
+        <button onclick="status()">Get Status</button>
+        <div id="statusResult"></div>
+    </div>
+
+    <script>
+        const baseUrl = 'http://127.0.0.1:8080';
+
+        async function index() {
+            const origin = document.getElementById('origin').value;
+            const depth = document.getElementById('depth').value;
+            try {
+                const response = await fetch(`${baseUrl}/index`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ origin, depth: parseInt(depth) })
+                });
+                const result = await response.json();
+                document.getElementById('indexResult').textContent = JSON.stringify(result, null, 2);
+            } catch (e) {
+                document.getElementById('indexResult').textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function search() {
+            const query = document.getElementById('query').value;
+            const limit = document.getElementById('limit').value;
+            try {
+                const response = await fetch(`${baseUrl}/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+                const result = await response.json();
+                document.getElementById('searchResult').textContent = JSON.stringify(result, null, 2);
+            } catch (e) {
+                document.getElementById('searchResult').textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function status() {
+            try {
+                const response = await fetch(`${baseUrl}/status`);
+                const result = await response.json();
+                document.getElementById('statusResult').textContent = JSON.stringify(result, null, 2);
+            } catch (e) {
+                document.getElementById('statusResult').textContent = 'Error: ' + e.message;
+            }
+        }
+    </script>
+</body>
+</html>
