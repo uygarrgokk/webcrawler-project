@@ -1,3 +1,4 @@
+import time
 import argparse
 
 from crawler.storage import init_db, get_connection
@@ -22,6 +23,8 @@ def main():
     index_cmd.add_argument("--workers", type=int, default=5)
     index_cmd.add_argument("--queue-size", type=int, default=1000)
     index_cmd.add_argument("--rate", type=float, default=5.0)
+    index_cmd.add_argument("--watch", action="store_true", help="Monitor progress while indexing")
+    index_cmd.add_argument("--watch-interval", type=int, default=5, help="Interval in seconds for monitoring progress")
 
     search_cmd = sub.add_parser("search")
     search_cmd.add_argument("query")
@@ -53,9 +56,28 @@ def main():
             rate=args.rate,
         )
         job_id = crawler.crawl(args.url, args.depth)
-        print(f"started job_id={job_id}")
-        crawler.queue.join()
-        print("indexing completed")
+        print(f"Started crawl job {job_id} for {args.url} up to depth {args.depth}")
+
+        if args.watch:
+            while True:
+                status = crawler.status()
+                print(status)
+
+                done = (
+                    status.get("jobs_running", 0) == 0
+                    and status.get("queue_depth", 0) == 0
+                    and status.get("frontier_processing", 0) == 0
+                )
+
+                if done:
+                    print("Indexing complete.")
+                    break
+
+                time.sleep(args.watch_interval)
+        else:
+            crawler.queue.join()
+            print("Indexing complete.")
+
         return
 
     if args.cmd == "status":

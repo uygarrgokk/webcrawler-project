@@ -36,6 +36,17 @@ The implementation is intentionally built mostly with Python standard library fu
 - Provides both CLI and HTTP endpoints
 - Includes a minimal browser UI on `/`
 
+Notes on CLI Watch Mode
+
+The CLI --watch mode monitors crawler progress by continuously polling the shared database. When multiple indexing jobs are active (e.g., when the HTTP server is running), the watch output reflects the global system state rather than only the most recently started job.
+
+For isolated demonstrations, it is recommended to run the CLI against a separate database file:
+
+python -m crawler.cli --db demo.db index https://example.com 1 --watch
+
+Alternatively, when using the HTTP server, system state should be observed via the /status endpoint instead of CLI watch mode.
+
+
 ## Project Structure
 
 ```text
@@ -49,3 +60,4 @@ crawler/
 README.md
 product_prd.md
 recommendation.md
+
