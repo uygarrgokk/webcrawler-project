@@ -226,87 +226,85 @@ class WebCrawler:
     def worker_loop(self):
         conn = get_connection(self.db_path)
 
-        while not self.shutdown_event.is_set():
-            try:
-                job_id, url, depth = self.queue.get(timeout=0.5)
-            except queue.Empty:
-                continue
-
-            with self.lock:
-                self.active_workers += 1
-
-            try:
-                job_row = self.get_job(conn, job_id)
-                if not job_row:
-                    self.queue.task_done()
-                    continue
-
-                origin, max_depth, status = job_row
-                if status != "running":
-                    self.queue.task_done()
+        try:
+            while not self.shutdown_event.is_set():
+                try:
+                    job_id, url, depth = self.queue.get(timeout=0.5)
+                except queue.Empty:
                     continue
 
                 with self.lock:
-                    if url in self.visited_urls:
-                        with transaction(conn):
-                            self.mark_frontier_status(conn, job_id, url, "done")
-                            self.maybe_finish_job(conn, job_id)
-                        self.queue.task_done()
-                        self.active_workers -= 1
-                        continue
-                    self.visited_urls.add(url)
-
-                with transaction(conn):
-                    self.mark_frontier_status(conn, job_id, url, "processing")
-
-                time.sleep(1.0 / self.rate)
+                    self.active_workers += 1
 
                 try:
-                    html = self.fetch_page(url)
-                except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as e:
-                    self.last_error = str(e)
-                    with transaction(conn):
-                        self.mark_frontier_status(conn, job_id, url, "error")
-                        self.maybe_finish_job(conn, job_id)
-                    self.queue.task_done()
-                    with self.lock:
-                        self.active_workers -= 1
-                    continue
-                except Exception as e:
-                    self.last_error = str(e)
-                    with transaction(conn):
-                        self.mark_frontier_status(conn, job_id, url, "error")
-                        self.maybe_finish_job(conn, job_id)
-                    self.queue.task_done()
-                    with self.lock:
-                        self.active_workers -= 1
-                    continue
+                    job_row = self.get_job(conn, job_id)
+                    if not job_row:
+                        continue
 
-                if html is None:
+                    origin, max_depth, status = job_row
+                    if status != "running":
+                        continue
+
+                    with self.lock:
+                        if url in self.visited_urls:
+                            with transaction(conn):
+                                self.mark_frontier_status(conn, job_id, url, "done")
+                                self.maybe_finish_job(conn, job_id)
+                            continue
+                        self.visited_urls.add(url)
+
                     with transaction(conn):
+                        self.mark_frontier_status(conn, job_id, url, "processing")
+
+                    time.sleep(1.0 / self.rate)
+
+                    try:
+                        html = self.fetch_page(url)
+                    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as e:
+                        self.last_error = str(e)
+                        with transaction(conn):
+                            self.mark_frontier_status(conn, job_id, url, "error")
+                            self.log(conn, job_id, f"Failed to fetch {url}: {e}", level="ERROR")
+                            self.maybe_finish_job(conn, job_id)
+                        continue
+                    except Exception as e:
+                        self.last_error = str(e)
+                        with transaction(conn):
+                            self.mark_frontier_status(conn, job_id, url, "error")
+                            self.log(conn, job_id, f"Unexpected error while fetching {url}: {e}", level="ERROR")
+                            self.maybe_finish_job(conn, job_id)
+                        continue
+
+                    if html is None:
+                        with transaction(conn):
+                            self.mark_frontier_status(conn, job_id, url, "done")
+                            self.log(conn, job_id, f"Skipped non-HTML content at {url}")
+                            self.maybe_finish_job(conn, job_id)
+                        continue
+
+                    raw_links = self.extract_links(html)
+                    term_count = len(self.extract_text_terms(html))
+
+                    with transaction(conn):
+                        self.upsert_page_and_index(conn, url, html)
+                        self.log(conn, job_id, f"Crawled {url}")
+                        self.log(conn, job_id, f"Indexed approximately {term_count} terms from {url}")
+                        self.log(conn, job_id, f"Discovered {len(raw_links)} raw links on {url}")
+
+                        self.enqueue_discovered_links(conn, job_id, origin, url, depth, html, max_depth)
                         self.mark_frontier_status(conn, job_id, url, "done")
                         self.maybe_finish_job(conn, job_id)
-                    self.queue.task_done()
+
                     with self.lock:
-                        self.active_workers -= 1
-                    continue
+                        self.pages_indexed += 1
 
-                with transaction(conn):
-                    self.upsert_page_and_index(conn, url, html)
-                    self.enqueue_discovered_links(conn, job_id, origin, url, depth, html, max_depth)
-                    self.mark_frontier_status(conn, job_id, url, "done")
-                    self.maybe_finish_job(conn, job_id)
-
-                with self.lock:
-                    self.pages_indexed += 1
-
-            finally:
-                with self.lock:
-                    if self.active_workers > 0:
-                        self.active_workers -= 1
-                self.queue.task_done()
-
-        conn.close()
+                finally:
+                    with self.lock:
+                        if self.active_workers > 0:
+                            self.active_workers -= 1
+                    self.queue.task_done()
+        finally:
+            conn.close()
 
     def status(self):
         conn = get_connection(self.db_path)

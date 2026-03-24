@@ -54,7 +54,49 @@ class Handler(BaseHTTPRequestHandler):
             payload = self.app_server.crawler.status()
             self._send_json(200, payload)
             return
+        if parsed.path == "/logs":
+            params = parse_qs(parsed.query)
+            limit_raw = params.get("limit", ["50"])[0]
+            job_id_raw = params.get("job_id", [None])[0]
 
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                self._send_json(400, {"error": "limit must be an integer"})
+                return
+
+            conn = get_connection(self.app_server.db_path)
+            try:
+                if job_id_raw is not None:
+                    try:
+                        job_id = int(job_id_raw)
+                    except ValueError:
+                        self._send_json(400, {"error": "job_id must be an integer"})
+                        return
+
+                    rows = conn.execute("""
+                        SELECT log_id, job_id, level, message, created_at
+                        FROM logs
+                        WHERE job_id = ?
+                        ORDER BY log_id DESC
+                        LIMIT ?
+                    """, (job_id, limit)).fetchall()
+                else:
+                    rows = conn.execute("""
+                        SELECT log_id, job_id, level, message, created_at
+                        FROM logs
+                        ORDER BY log_id DESC
+                        LIMIT ?
+                    """, (limit,)).fetchall()
+            finally:
+                conn.close()
+
+            payload = {
+                "count": len(rows),
+                "logs": rows,
+            }
+            self._send_json(200, payload)
+            return
         if parsed.path == "/search":
             params = parse_qs(parsed.query)
             query = params.get("q", [""])[0].strip()
