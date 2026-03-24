@@ -49,6 +49,12 @@ class WebCrawler:
 
         self.load_running_frontier()
 
+    def log(self, conn, job_id, message, level="INFO"):
+        conn.execute(
+            "INSERT INTO logs (job_id, level, message) VALUES (?, ?, ?)",
+            (job_id, level, message)
+        )
+
     def normalize_url(self, base_url: str, raw_url: str):
         joined = urljoin(base_url, raw_url)
         joined, _frag = urldefrag(joined)
@@ -113,7 +119,9 @@ class WebCrawler:
                 INSERT INTO jobs (origin, max_depth, status)
                 VALUES (?, ?, 'running')
             """, (origin, max_depth))
+            
             job_id = cur.lastrowid
+            self.log(conn, job_id, f"Started crawl for {origin} with depth {max_depth}") 
 
             conn.execute("""
                 INSERT OR IGNORE INTO discoveries (job_id, url, origin, depth)

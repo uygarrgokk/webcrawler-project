@@ -61,6 +61,17 @@ def init_db(db_path: str):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_discoveries_url ON discoveries(url)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_frontier_status ON frontier(status)")
 
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS logs (
+        log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        level TEXT NOT NULL DEFAULT 'INFO',
+        message TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (job_id) REFERENCES jobs(job_id)
+    )
+    """)
+    
     conn.commit()
     return conn
 
